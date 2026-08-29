@@ -41,7 +41,9 @@ jobs:
           swift --version
 
       - name: Apply source patch
-        run: python3 Scripts/apply-plugin-top-level-tabs.py
+        run: |
+          python3 Scripts/apply-plugin-top-level-tabs.py
+          python3 Scripts/fix-plugin-top-level-tabs.py
 
       - name: Run focused tests
         run: swift test --filter UserPluginTopLevelTests
