@@ -84,6 +84,7 @@ protocol ProviderPluginValue {
     var isArray: Bool { get }
     var isNull: Bool { get }
     var isUndefined: Bool { get }
+    var isBoolean: Bool { get }
     var isString: Bool { get }
     var isNumber: Bool { get }
     var isDate: Bool { get }
@@ -91,6 +92,7 @@ protocol ProviderPluginValue {
     func property(_ name: String) -> (any ProviderPluginValue)?
     func element(at index: Int) -> (any ProviderPluginValue)?
     func stringValue() -> String
+    func boolValue() -> Bool
     func int32Value() -> Int32
     func doubleValue() -> Double
     func dateValue() -> Date?
@@ -117,6 +119,11 @@ final class JSONProviderPluginValue: ProviderPluginValue {
 
     var isUndefined: Bool {
         false
+    }
+
+    var isBoolean: Bool {
+        guard let number = self.value as? NSNumber else { return false }
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
     var isString: Bool {
@@ -149,6 +156,10 @@ final class JSONProviderPluginValue: ProviderPluginValue {
 
     func stringValue() -> String {
         self.value as? String ?? String(describing: self.value)
+    }
+
+    func boolValue() -> Bool {
+        (self.value as? NSNumber)?.boolValue ?? false
     }
 
     func int32Value() -> Int32 {
@@ -190,6 +201,10 @@ final class JavaScriptCorePluginValue: ProviderPluginValue {
         self.value.isUndefined
     }
 
+    var isBoolean: Bool {
+        self.value.isBoolean
+    }
+
     var isString: Bool {
         self.value.isString
     }
@@ -212,6 +227,10 @@ final class JavaScriptCorePluginValue: ProviderPluginValue {
 
     func stringValue() -> String {
         self.value.toString()
+    }
+
+    func boolValue() -> Bool {
+        self.value.toBool()
     }
 
     func int32Value() -> Int32 {

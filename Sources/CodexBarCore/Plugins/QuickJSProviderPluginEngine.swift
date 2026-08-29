@@ -99,6 +99,10 @@ private final class QuickJSPluginValue: ProviderPluginValue {
         cqjs_is_undefined(self.value)
     }
 
+    var isBoolean: Bool {
+        JS_IsBool(self.value)
+    }
+
     var isString: Bool {
         cqjs_is_string(self.value)
     }
@@ -123,6 +127,10 @@ private final class QuickJSPluginValue: ProviderPluginValue {
 
     func stringValue() -> String {
         (try? self.engine.string(from: self.value)) ?? ""
+    }
+
+    func boolValue() -> Bool {
+        JS_ToBool(self.engine.context, self.value) != 0
     }
 
     func int32Value() -> Int32 {

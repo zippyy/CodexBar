@@ -4,8 +4,70 @@ import CodexBarCore
 import SwiftUI
 
 extension StatusItemController {
-    func addUserPluginMenuCards(to menu: NSMenu, width: CGFloat) {
-        let plugins = UserProviderPluginRegistry.all.filter { self.settings.isPluginEnabled($0.manifest.id) }
+    func enabledTopLevelUserPlugins() -> [UserProviderPlugin] {
+        UserProviderPluginRegistry.all.filter { plugin in
+            plugin.manifest.topLevel && self.settings.isPluginEnabled(plugin.manifest.id)
+        }
+    }
+
+    func isEnabledTopLevelUserPlugin(_ instanceID: ProviderInstanceID) -> Bool {
+        self.enabledTopLevelUserPlugins().contains { $0.manifest.id == instanceID }
+    }
+
+    func mergedSwitcherProviderIDs(firstPartyProviders: [UsageProvider]) -> [ProviderInstanceID] {
+        firstPartyProviders.map(\.instanceID) + self.enabledTopLevelUserPlugins().map { $0.manifest.id }
+    }
+
+    func hasMergedProviderSwitcher(firstPartyProviders: [UsageProvider]) -> Bool {
+        self.shouldMergeIcons && self.mergedSwitcherProviderIDs(firstPartyProviders: firstPartyProviders).count > 1
+    }
+
+    func userPluginSwitcherSegments() -> [ProviderSwitcherAdditionalSegment] {
+        self.enabledTopLevelUserPlugins().map { plugin in
+            ProviderSwitcherAdditionalSegment(
+                instanceID: plugin.manifest.id,
+                image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
+                title: plugin.manifest.name)
+        }
+    }
+
+    private func userPluginSwitcherIcon(monogram: String) -> NSImage {
+        let size = NSSize(width: 16, height: 16)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        let text = String(monogram.prefix(2)) as NSString
+        let font = NSFont.systemFont(ofSize: text.length > 1 ? 7.5 : 10, weight: .bold)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.labelColor,
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        text.draw(
+            at: NSPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2),
+            withAttributes: attributes)
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
+    }
+
+    func addUserPluginMenuCards(
+        to menu: NSMenu,
+        width: CGFloat,
+        selectedTopLevelPluginID: ProviderInstanceID? = nil)
+    {
+        let enabledPlugins = UserProviderPluginRegistry.all.filter { self.settings.isPluginEnabled($0.manifest.id) }
+        let plugins: [UserProviderPlugin]
+        if let selectedTopLevelPluginID {
+            plugins = enabledPlugins.filter {
+                $0.manifest.topLevel && $0.manifest.id == selectedTopLevelPluginID
+            }
+        } else if self.shouldMergeIcons {
+            // A top-level plugin owns its switcher tab; do not duplicate it under every built-in tab.
+            plugins = enabledPlugins.filter { !$0.manifest.topLevel }
+        } else {
+            // Split-icon mode has no dynamic provider switcher yet, so preserve the legacy global-card behavior.
+            plugins = enabledPlugins
+        }
         guard !plugins.isEmpty else { return }
         if menu.items.last?.isSeparatorItem != true {
             menu.addItem(.separator())

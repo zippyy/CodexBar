@@ -69,6 +69,7 @@ public enum ProviderPluginCapability: String, Hashable, Sendable {
 public struct ProviderPluginManifest: Sendable {
     public let id: ProviderInstanceID
     public let name: String
+    public let topLevel: Bool
     public let icon: ProviderPluginIcon
     public let endpoints: Set<ProviderPluginEndpoint>
     public let auth: ProviderPluginAuth?
@@ -94,6 +95,7 @@ public struct ProviderPluginManifest: Sendable {
         }
         self.id = id
         self.name = try Self.boundedString(definition, property: "name", maximumLength: 80)
+        self.topLevel = try Self.optionalBool(definition, property: "topLevel") ?? false
         self.icon = try Self.parseIcon(definition.property("icon"), fallbackName: self.name)
 
         let endpointValue = definition.property("endpoints")
@@ -250,6 +252,14 @@ public struct ProviderPluginManifest: Sendable {
                 "the browser-cookies capability requires at least one declared cookie domain")
         }
         self.cookieDomains = cookieDomains
+    }
+
+    private static func optionalBool(_ object: any ProviderPluginValue, property: String) throws -> Bool? {
+        guard let value = object.property(property), !value.isUndefined, !value.isNull else { return nil }
+        guard value.isBoolean else {
+            throw ProviderPluginError.invalidManifest("'\(property)' must be a boolean when present")
+        }
+        return value.boolValue()
     }
 
     private static func requiredString(_ object: any ProviderPluginValue, property: String) throws -> String {
