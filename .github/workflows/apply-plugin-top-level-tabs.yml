@@ -1,0 +1,65 @@
+name: Apply plugin top-level tabs
+
+on:
+  push:
+    branches:
+      - feature/plugin-top-level-tabs
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/plugin-top-level-tabs
+          fetch-depth: 0
+
+      - name: Select Xcode toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=""
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "${candidate}/Contents/Developer"
+              selected="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$selected" ]]; then
+            echo "No supported Xcode 26.x installation found." >&2
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=${selected}/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+          swift --version
+
+      - name: Apply source patch
+        run: python3 Scripts/apply-plugin-top-level-tabs.py
+
+      - name: Run focused tests
+        run: swift test --filter UserPluginTopLevelTests
+
+      - name: Build CodexBar
+        run: swift build -c release --product CodexBar
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources Tests docs
+          if git diff --cached --quiet; then
+            echo "No implementation changes to commit." >&2
+            exit 1
+          fi
+          git commit -m "Add top-level tabs for user plugins"
+          git push origin HEAD:feature/plugin-top-level-tabs
