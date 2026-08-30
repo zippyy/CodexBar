@@ -7,6 +7,12 @@ enum ProviderSwitcherSelection: Hashable {
     case provider(ProviderInstanceID)
 }
 
+struct ProviderSwitcherAdditionalSegment {
+    let instanceID: ProviderInstanceID
+    let image: NSImage
+    let title: String
+}
+
 final class ProviderSwitcherView: NSView {
     private struct Segment {
         let selection: ProviderSwitcherSelection
@@ -47,6 +53,7 @@ final class ProviderSwitcherView: NSView {
 
     init(
         providers: [UsageProvider],
+        additionalSegments: [ProviderSwitcherAdditionalSegment] = [],
         selected: ProviderSwitcherSelection?,
         includesOverview: Bool,
         width: CGFloat,
@@ -67,6 +74,14 @@ final class ProviderSwitcherView: NSView {
                 image: icon,
                 title: fullTitle)
         }
+        segments.append(contentsOf: additionalSegments.map { segment in
+            segment.image.isTemplate = true
+            segment.image.size = NSSize(width: 16, height: 16)
+            return Segment(
+                selection: .provider(segment.instanceID),
+                image: segment.image,
+                title: segment.title)
+        })
         if includesOverview {
             let overviewIcon = Self.overviewIcon()
             overviewIcon.isTemplate = true
@@ -1006,6 +1021,10 @@ extension ProviderSwitcherView {
         button.state = state
         self.handleSelection(button)
         return true
+    }
+
+    func _test_segmentSelections() -> [ProviderSwitcherSelection] {
+        self.segments.map(\.selection)
     }
 
     func _test_buttonFrames() -> [NSRect] {

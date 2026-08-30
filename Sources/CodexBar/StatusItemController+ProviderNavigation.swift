@@ -41,33 +41,31 @@ extension StatusItemController {
     {
         guard self.shouldMergeIcons else { return }
         let enabledProviders = self.store.enabledFirstPartyProvidersForDisplay()
-        guard enabledProviders.count > 1 else { return }
+        let topLevelPluginIDs = self.enabledTopLevelUserPlugins().map { $0.manifest.id }
+        guard enabledProviders.count + topLevelPluginIDs.count > 1 else { return }
 
         let includesOverview = !self.settings.resolvedMergedOverviewProviders(
             activeProviders: enabledProviders,
             maxVisibleProviders: SettingsStore.mergedOverviewProviderLimit).isEmpty
         var selections = enabledProviders.map { ProviderSwitcherSelection.provider($0.instanceID) }
+        selections.append(contentsOf: topLevelPluginIDs.map(ProviderSwitcherSelection.provider))
         if includesOverview {
             selections.insert(.overview, at: 0)
         }
 
-        let current: ProviderSwitcherSelection = if includesOverview,
-                                                    self.settings.mergedMenuLastSelectedWasOverview
-        {
-            .overview
-        } else {
-            .provider((self.navigationResolvedProvider(enabledProviders: enabledProviders) ?? .codex).instanceID)
-        }
+        let current = self.resolvedSwitcherSelection(
+            enabledProviders: enabledProviders,
+            includesOverview: includesOverview)
         guard let currentIndex = selections.firstIndex(of: current) else { return }
 
         let delta = direction == .next ? 1 : -1
         let nextIndex = (currentIndex + delta + selections.count) % selections.count
         let selection = selections[nextIndex]
-        let menuProvider: UsageProvider = switch selection {
+        let menuProvider: UsageProvider? = switch selection {
         case .overview:
             self.navigationResolvedProvider(enabledProviders: enabledProviders) ?? .codex
         case let .provider(instanceID):
-            instanceID.firstPartyProvider ?? .codex
+            instanceID.firstPartyProvider
         }
         self.preservingMergedSwitcherContentCachesDuringInvalidation {
             switch selection {

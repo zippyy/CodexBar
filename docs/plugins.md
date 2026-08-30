@@ -52,6 +52,9 @@ defineProvider({
 - `id`: 1–64 lowercase ASCII letters, digits, or hyphens. It must not match a built-in provider or another installed
   plugin.
 - `name`: trimmed display name, 1–80 UTF-8 bytes.
+- `topLevel` (optional, default `false`): when `true`, an enabled user plugin appears as its own tab in the merged
+  provider switcher instead of being appended beneath every built-in provider tab. This is presentation-only and does
+  not expand the plugin's sandbox authority or approval binding.
 - `icon` (optional): `{monogram, tint}`. `monogram` is 1–3 characters; `tint` is `#RRGGBB`. The fallback is the first
   letter of `name` with a neutral tint. File/SVG icons are not supported.
 - `endpoints`: 1–16 declared network origins. A fixed endpoint is a normalized HTTPS origin such as

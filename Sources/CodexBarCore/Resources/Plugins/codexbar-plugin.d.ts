@@ -189,6 +189,8 @@ interface CodexBarPluginContext {
 interface CodexBarProviderDefinition {
   id: string;
   name: string;
+  /** Show this user plugin as a first-class provider tab in the merged provider switcher. */
+  topLevel?: boolean;
   icon?: { monogram?: string; tint?: string };
   endpoints: CodexBarEndpoint[];
   auth?: CodexBarAuth;

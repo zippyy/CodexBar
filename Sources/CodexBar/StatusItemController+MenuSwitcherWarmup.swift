@@ -41,12 +41,14 @@ extension StatusItemController {
     func warmMergedSwitcherSiblingContent(in menu: NSMenu) {
         guard menu.items.first?.view is ProviderSwitcherView else { return }
         let enabledProviders = self.store.enabledFirstPartyProvidersForDisplay()
-        guard enabledProviders.count > 1 else { return }
+        let topLevelPluginIDs = self.enabledTopLevelUserPlugins().map { $0.manifest.id }
+        guard enabledProviders.count + topLevelPluginIDs.count > 1 else { return }
         let includesOverview = self.includesOverviewTab(enabledProviders: enabledProviders)
         let currentSelection = self.resolvedSwitcherSelection(
             enabledProviders: enabledProviders,
             includesOverview: includesOverview)
         var selections: [ProviderSwitcherSelection] = enabledProviders.map { .provider($0.instanceID) }
+        selections.append(contentsOf: topLevelPluginIDs.map(ProviderSwitcherSelection.provider))
         if includesOverview {
             selections.insert(.overview, at: 0)
         }
@@ -64,16 +66,26 @@ extension StatusItemController {
         enabledProviders: [UsageProvider])
     {
         let isOverviewSelected = selection == .overview
-        let selectedProvider = isOverviewSelected
-            ? self.resolvedMenuProvider(enabledProviders: enabledProviders)
-            : selection.provider
+        let isTopLevelPluginSelected = selection.instanceID.map(self.isEnabledTopLevelUserPlugin) ?? false
+        let selectedProvider: UsageProvider? = if isOverviewSelected {
+            self.resolvedMenuProvider(enabledProviders: enabledProviders)
+        } else if isTopLevelPluginSelected {
+            nil
+        } else {
+            selection.provider
+        }
         let currentProvider = selectedProvider ?? enabledProviders.first ?? .codex
-        let codexAccountDisplay = isOverviewSelected ? nil : self.codexAccountMenuDisplay(for: currentProvider)
-        let tokenAccountDisplay = isOverviewSelected ? nil : self.tokenAccountMenuDisplay(for: currentProvider)
+        let suppressProviderSpecificChrome = isOverviewSelected || isTopLevelPluginSelected
+        let codexAccountDisplay = suppressProviderSpecificChrome
+            ? nil
+            : self.codexAccountMenuDisplay(for: currentProvider)
+        let tokenAccountDisplay = suppressProviderSpecificChrome
+            ? nil
+            : self.tokenAccountMenuDisplay(for: currentProvider)
         let showAllAccounts = (tokenAccountDisplay?.showAll ?? false) || (codexAccountDisplay?.showAll ?? false)
         let descriptor = self.makeMenuDescriptor(
             provider: selectedProvider,
-            includeContextualActions: !isOverviewSelected)
+            includeContextualActions: !suppressProviderSpecificChrome)
         let menuWidth = self.menuCardWidth(
             for: enabledProviders,
             selectedProvider: selectedProvider,
