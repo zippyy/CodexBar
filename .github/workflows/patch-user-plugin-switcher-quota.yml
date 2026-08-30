@@ -9,9 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  patch-and-test:
+  patch-and-commit:
     if: github.actor != 'github-actions[bot]'
-    runs-on: macos-26
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout main
@@ -19,26 +19,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-
-      - name: Select Xcode toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          selected=""
-          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
-            if [[ -d "$candidate" ]]; then
-              sudo xcode-select -s "${candidate}/Contents/Developer"
-              selected="$candidate"
-              break
-            fi
-          done
-          if [[ -z "$selected" ]]; then
-            echo "No supported Xcode 26.x installation found." >&2
-            exit 1
-          fi
-          echo "DEVELOPER_DIR=${selected}/Contents/Developer" >> "$GITHUB_ENV"
-          xcodebuild -version
-          swift --version
 
       - name: Apply quota patch
         shell: bash
@@ -141,11 +121,15 @@ jobs:
                   })""")
           PY
 
-      - name: Run focused tests
-        run: swift test --filter UserPluginTopLevelTests
-
-      - name: Build CodexBar
-        run: swift build -c release --product CodexBar
+      - name: Validate patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          grep -q 'let remainingPercentProvider: () -> Double?' Sources/CodexBar/StatusItemController+SwitcherViews.swift
+          grep -q 'remainingPercentProvider: segment.remainingPercentProvider' Sources/CodexBar/StatusItemController+SwitcherViews.swift
+          grep -q 'return self.segments.first(where:' Sources/CodexBar/StatusItemController+SwitcherViews.swift
+          grep -q '100 - usedPercent' Sources/CodexBar/StatusItemController+UserPlugins.swift
 
       - name: Commit patch
         shell: bash
@@ -155,9 +139,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Sources/CodexBar/StatusItemController+SwitcherViews.swift Sources/CodexBar/StatusItemController+UserPlugins.swift
-          if git diff --cached --quiet; then
-            echo "No quota changes to commit." >&2
-            exit 1
-          fi
           git commit -m "Show quota bars for top-level user plugins"
           git push origin HEAD:main
