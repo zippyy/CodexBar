@@ -31,6 +31,7 @@ final class ProviderSwitcherView: NSView {
     private let onSelect: (ProviderSwitcherSelection) -> Void
     private let showsIcons: Bool
     private let weeklyRemainingProvider: (UsageProvider) -> Double?
+    private let additionalRemainingProvider: (ProviderInstanceID) -> Double?
     private var buttons: [NSButton] = []
     private var quotaIndicators: [ObjectIdentifier: QuotaIndicator] = [:]
     private var hoverTrackingArea: NSTrackingArea?
@@ -60,6 +61,7 @@ final class ProviderSwitcherView: NSView {
         showsIcons: Bool,
         iconProvider: (UsageProvider) -> NSImage,
         weeklyRemainingProvider: @escaping (UsageProvider) -> Double?,
+        additionalRemainingProvider: @escaping (ProviderInstanceID) -> Double? = { _ in nil },
         onSelect: @escaping (ProviderSwitcherSelection) -> Void)
     {
         let minimumGap: CGFloat = 1
@@ -97,6 +99,7 @@ final class ProviderSwitcherView: NSView {
         self.onSelect = onSelect
         self.showsIcons = showsIcons
         self.weeklyRemainingProvider = weeklyRemainingProvider
+        self.additionalRemainingProvider = additionalRemainingProvider
         self.stackedIcons = showsIcons && self.segments.count > 3
         let initialOuterPadding = Self.switcherOuterPadding(
             for: width,
@@ -690,9 +693,12 @@ final class ProviderSwitcherView: NSView {
     private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
         switch selection {
         case let .provider(instanceID):
-            instanceID.firstPartyProvider.flatMap(self.weeklyRemainingProvider)
+            if let provider = instanceID.firstPartyProvider {
+                return self.weeklyRemainingProvider(provider)
+            }
+            return self.additionalRemainingProvider(instanceID)
         case .overview:
-            nil
+            return nil
         }
     }
 

@@ -1009,6 +1009,9 @@ extension StatusItemController {
             weeklyRemainingProvider: { [weak self] provider in
                 self?.switcherWeeklyRemaining(for: provider)
             },
+            additionalRemainingProvider: { [weak self] instanceID in
+                self?.store.snapshots[instanceID]?.primary?.remainingPercent
+            },
             onSelect: { [weak self, weak menu] selection in
                 guard let self, let menu else { return }
                 MenuSwitchFlickerProbe.debugLog("onSelect \(selection)")

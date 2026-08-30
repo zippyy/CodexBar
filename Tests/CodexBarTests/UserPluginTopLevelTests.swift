@@ -54,12 +54,18 @@ struct UserPluginTopLevelTests {
             showsIcons: true,
             iconProvider: { _ in NSImage(size: NSSize(width: 16, height: 16)) },
             weeklyRemainingProvider: { _ in nil },
+            additionalRemainingProvider: { instanceID in
+                instanceID == pluginID ? 62.5 : nil
+            },
             onSelect: { _ in })
 
         #expect(view._test_segmentSelections() == [
             .provider(UsageProvider.codex.instanceID),
             .provider(pluginID),
         ])
+        let quotaRatios = view._test_quotaIndicatorFillRatios()
+        #expect(quotaRatios.count == 1)
+        #expect(abs((quotaRatios.first ?? 0) - 0.625) < 0.0001)
     }
 }
 #endif
