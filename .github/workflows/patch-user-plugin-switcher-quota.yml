@@ -1,0 +1,197 @@
+name: Patch user plugin switcher quota
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Select Xcode toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=""
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "${candidate}/Contents/Developer"
+              selected="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$selected" ]]; then
+            echo "No supported Xcode 26.x installation found." >&2
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=${selected}/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+          swift --version
+
+      - name: Apply quota patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          switcher = "Sources/CodexBar/StatusItemController+SwitcherViews.swift"
+          replace_once(
+              switcher,
+              '''struct ProviderSwitcherAdditionalSegment {
+              let instanceID: ProviderInstanceID
+              let image: NSImage
+              let title: String
+          }
+          ''',
+              '''struct ProviderSwitcherAdditionalSegment {
+              let instanceID: ProviderInstanceID
+              let image: NSImage
+              let title: String
+              let remainingPercentProvider: () -> Double?
+          }
+          ''')
+
+          replace_once(
+              switcher,
+              '''    private struct Segment {
+                  let selection: ProviderSwitcherSelection
+                  let image: NSImage
+                  let title: String
+              }
+          ''',
+              '''    private struct Segment {
+                  let selection: ProviderSwitcherSelection
+                  let image: NSImage
+                  let title: String
+                  let remainingPercentProvider: (() -> Double?)?
+              }
+          ''')
+
+          replace_once(
+              switcher,
+              '''            return Segment(
+                      selection: .provider(provider.instanceID),
+                      image: icon,
+                      title: fullTitle)
+          ''',
+              '''            return Segment(
+                      selection: .provider(provider.instanceID),
+                      image: icon,
+                      title: fullTitle,
+                      remainingPercentProvider: nil)
+          ''')
+
+          replace_once(
+              switcher,
+              '''            return Segment(
+                      selection: .provider(segment.instanceID),
+                      image: segment.image,
+                      title: segment.title)
+          ''',
+              '''            return Segment(
+                      selection: .provider(segment.instanceID),
+                      image: segment.image,
+                      title: segment.title,
+                      remainingPercentProvider: segment.remainingPercentProvider)
+          ''')
+
+          replace_once(
+              switcher,
+              '''                Segment(
+                      selection: .overview,
+                      image: overviewIcon,
+                      title: L("Overview")),
+          ''',
+              '''                Segment(
+                      selection: .overview,
+                      image: overviewIcon,
+                      title: L("Overview"),
+                      remainingPercentProvider: nil),
+          ''')
+
+          replace_once(
+              switcher,
+              '''    private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
+                  switch selection {
+                  case let .provider(instanceID):
+                      instanceID.firstPartyProvider.flatMap(self.weeklyRemainingProvider)
+                  case .overview:
+                      nil
+                  }
+              }
+          ''',
+              '''    private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
+                  switch selection {
+                  case let .provider(instanceID):
+                      if let provider = instanceID.firstPartyProvider {
+                          return self.weeklyRemainingProvider(provider)
+                      }
+                      return self.segments.first(where: { $0.selection == selection })?.remainingPercentProvider?()
+                  case .overview:
+                      return nil
+                  }
+              }
+          ''')
+
+          user_plugins = "Sources/CodexBar/StatusItemController+UserPlugins.swift"
+          replace_once(
+              user_plugins,
+              '''            ProviderSwitcherAdditionalSegment(
+                      instanceID: plugin.manifest.id,
+                      image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
+                      title: plugin.manifest.name)
+          ''',
+              '''            ProviderSwitcherAdditionalSegment(
+                      instanceID: plugin.manifest.id,
+                      image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
+                      title: plugin.manifest.name,
+                      remainingPercentProvider: { [weak store = self.store] in
+                          guard let usedPercent = store?.snapshots[plugin.manifest.id]?.primary?.usedPercent else {
+                              return nil
+                          }
+                          return max(0, min(100, 100 - usedPercent))
+                      })
+          ''')
+          PY
+
+      - name: Run focused tests
+        run: swift test --filter UserPluginTopLevelTests
+
+      - name: Build CodexBar
+        run: swift build -c release --product CodexBar
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Sources/CodexBar/StatusItemController+SwitcherViews.swift Sources/CodexBar/StatusItemController+UserPlugins.swift
+          if git diff --cached --quiet; then
+            echo "No quota changes to commit." >&2
+            exit 1
+          fi
+          git commit -m "Show quota bars for top-level user plugins"
+          git push origin HEAD:main
