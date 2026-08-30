@@ -11,6 +11,7 @@ struct ProviderSwitcherAdditionalSegment {
     let instanceID: ProviderInstanceID
     let image: NSImage
     let title: String
+    let remainingPercentProvider: () -> Double?
 }
 
 final class ProviderSwitcherView: NSView {
@@ -18,6 +19,7 @@ final class ProviderSwitcherView: NSView {
         let selection: ProviderSwitcherSelection
         let image: NSImage
         let title: String
+        let remainingPercentProvider: (() -> Double?)?
     }
 
     fileprivate struct QuotaIndicator {
@@ -72,7 +74,8 @@ final class ProviderSwitcherView: NSView {
             return Segment(
                 selection: .provider(provider.instanceID),
                 image: icon,
-                title: fullTitle)
+                title: fullTitle,
+                remainingPercentProvider: nil)
         }
         segments.append(contentsOf: additionalSegments.map { segment in
             segment.image.isTemplate = true
@@ -80,7 +83,8 @@ final class ProviderSwitcherView: NSView {
             return Segment(
                 selection: .provider(segment.instanceID),
                 image: segment.image,
-                title: segment.title)
+                title: segment.title,
+                remainingPercentProvider: segment.remainingPercentProvider)
         })
         if includesOverview {
             let overviewIcon = Self.overviewIcon()
@@ -90,7 +94,8 @@ final class ProviderSwitcherView: NSView {
                 Segment(
                     selection: .overview,
                     image: overviewIcon,
-                    title: L("Overview")),
+                    title: L("Overview"),
+                    remainingPercentProvider: nil),
                 at: 0)
         }
         self.segments = segments
@@ -690,9 +695,12 @@ final class ProviderSwitcherView: NSView {
     private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
         switch selection {
         case let .provider(instanceID):
-            instanceID.firstPartyProvider.flatMap(self.weeklyRemainingProvider)
+            if let provider = instanceID.firstPartyProvider {
+                return self.weeklyRemainingProvider(provider)
+            }
+            return self.segments.first(where: { $0.selection == selection })?.remainingPercentProvider?()
         case .overview:
-            nil
+            return nil
         }
     }
 
