@@ -1,0 +1,161 @@
+name: Release macOS app
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release (for example v0.56.1-zippyy.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-app-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: macos-26
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      CODEXBAR_SIGNING: adhoc
+      ARCHES: "arm64 x86_64"
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Select Xcode toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=""
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "${candidate}/Contents/Developer"
+              selected="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$selected" ]]; then
+            echo "No supported Xcode 26.x installation found." >&2
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=${selected}/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+          swift --version
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9] ]]; then
+            echo "Release tag must begin with v followed by a digit: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          git fetch --tags --force
+          if ! git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag does not exist: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          source version.env
+          echo "Packaging CodexBar ${MARKETING_VERSION} (${BUILD_NUMBER}) from ${RELEASE_TAG}"
+
+      - name: Build and package universal app
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./Scripts/package_app.sh release
+
+      - name: Verify packaged application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d CodexBar.app
+          codesign --verify --deep --strict --verbose=2 CodexBar.app
+
+          for binary in \
+            CodexBar.app/Contents/MacOS/CodexBar \
+            CodexBar.app/Contents/Helpers/CodexBarCLI \
+            CodexBar.app/Contents/Helpers/CodexBarClaudeWatchdog \
+            CodexBar.app/Contents/PlugIns/CodexBarWidget.appex/Contents/MacOS/CodexBarWidget
+          do
+            echo "== $binary =="
+            archs="$(lipo -archs "$binary")"
+            echo "$archs"
+            grep -qw arm64 <<<"$archs"
+            grep -qw x86_64 <<<"$archs"
+          done
+
+      - name: Create release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          ZIP="dist/CodexBar-${RELEASE_TAG}-macOS-universal.zip"
+          DMG="dist/CodexBar-${RELEASE_TAG}-macOS-universal.dmg"
+
+          ditto -c -k --sequesterRsrc --keepParent CodexBar.app "$ZIP"
+          hdiutil create \
+            -volname "CodexBar" \
+            -srcfolder CodexBar.app \
+            -ov \
+            -format UDZO \
+            "$DMG"
+
+          (
+            cd dist
+            shasum -a 256 \
+              "$(basename "$ZIP")" \
+              "$(basename "$DMG")" \
+              > SHA256SUMS.txt
+          )
+
+          ls -lh dist
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexBar-${{ env.RELEASE_TAG }}-macOS-universal
+          path: |
+            dist/*.zip
+            dist/*.dmg
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; replacing generated assets."
+            gh release upload "$RELEASE_TAG" \
+              dist/*.zip \
+              dist/*.dmg \
+              dist/SHA256SUMS.txt \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              dist/*.zip \
+              dist/*.dmg \
+              dist/SHA256SUMS.txt \
+              --title "CodexBar ${RELEASE_TAG}" \
+              --generate-notes \
+              --verify-tag
+          fi
