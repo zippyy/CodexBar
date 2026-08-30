@@ -52,87 +52,61 @@ jobs:
               text = p.read_text()
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old!r}")
               p.write_text(text.replace(old, new, 1))
 
           switcher = "Sources/CodexBar/StatusItemController+SwitcherViews.swift"
+
           replace_once(
               switcher,
-              '''struct ProviderSwitcherAdditionalSegment {
+              """struct ProviderSwitcherAdditionalSegment {
               let instanceID: ProviderInstanceID
               let image: NSImage
               let title: String
           }
-          ''',
-              '''struct ProviderSwitcherAdditionalSegment {
+          """,
+              """struct ProviderSwitcherAdditionalSegment {
               let instanceID: ProviderInstanceID
               let image: NSImage
               let title: String
               let remainingPercentProvider: () -> Double?
           }
-          ''')
+          """)
 
           replace_once(
               switcher,
-              '''    private struct Segment {
+              """    private struct Segment {
                   let selection: ProviderSwitcherSelection
                   let image: NSImage
                   let title: String
               }
-          ''',
-              '''    private struct Segment {
+          """,
+              """    private struct Segment {
                   let selection: ProviderSwitcherSelection
                   let image: NSImage
                   let title: String
                   let remainingPercentProvider: (() -> Double?)?
               }
-          ''')
+          """)
 
           replace_once(
               switcher,
-              '''            return Segment(
-                      selection: .provider(provider.instanceID),
-                      image: icon,
-                      title: fullTitle)
-          ''',
-              '''            return Segment(
-                      selection: .provider(provider.instanceID),
-                      image: icon,
-                      title: fullTitle,
-                      remainingPercentProvider: nil)
-          ''')
+              "                title: fullTitle)",
+              "                title: fullTitle,\n                remainingPercentProvider: nil)")
 
           replace_once(
               switcher,
-              '''            return Segment(
-                      selection: .provider(segment.instanceID),
-                      image: segment.image,
-                      title: segment.title)
-          ''',
-              '''            return Segment(
-                      selection: .provider(segment.instanceID),
-                      image: segment.image,
-                      title: segment.title,
-                      remainingPercentProvider: segment.remainingPercentProvider)
-          ''')
+              "                title: segment.title)",
+              "                title: segment.title,\n                remainingPercentProvider: segment.remainingPercentProvider)")
 
           replace_once(
               switcher,
-              '''                Segment(
-                      selection: .overview,
-                      image: overviewIcon,
-                      title: L("Overview")),
-          ''',
-              '''                Segment(
-                      selection: .overview,
-                      image: overviewIcon,
-                      title: L("Overview"),
-                      remainingPercentProvider: nil),
-          ''')
+              "                    title: L(\"Overview\")),\n                at: 0)",
+              "                    title: L(\"Overview\"),\n                    remainingPercentProvider: nil),\n                at: 0)")
 
           replace_once(
               switcher,
-              '''    private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
+              """    private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
                   switch selection {
                   case let .provider(instanceID):
                       instanceID.firstPartyProvider.flatMap(self.weeklyRemainingProvider)
@@ -140,8 +114,8 @@ jobs:
                       nil
                   }
               }
-          ''',
-              '''    private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
+          """,
+              """    private func remainingPercent(for selection: ProviderSwitcherSelection) -> Double? {
                   switch selection {
                   case let .provider(instanceID):
                       if let provider = instanceID.firstPartyProvider {
@@ -152,17 +126,17 @@ jobs:
                       return nil
                   }
               }
-          ''')
+          """)
 
           user_plugins = "Sources/CodexBar/StatusItemController+UserPlugins.swift"
           replace_once(
               user_plugins,
-              '''            ProviderSwitcherAdditionalSegment(
+              """            ProviderSwitcherAdditionalSegment(
                       instanceID: plugin.manifest.id,
                       image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
                       title: plugin.manifest.name)
-          ''',
-              '''            ProviderSwitcherAdditionalSegment(
+          """,
+              """            ProviderSwitcherAdditionalSegment(
                       instanceID: plugin.manifest.id,
                       image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
                       title: plugin.manifest.name,
@@ -172,7 +146,7 @@ jobs:
                           }
                           return max(0, min(100, 100 - usedPercent))
                       })
-          ''')
+          """)
           PY
 
       - name: Run focused tests
