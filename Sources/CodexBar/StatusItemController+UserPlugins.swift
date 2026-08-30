@@ -28,12 +28,12 @@ extension StatusItemController {
                 instanceID: plugin.manifest.id,
                 image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
                 title: plugin.manifest.name,
-        remainingPercentProvider: { [weak store = self.store] in
-            guard let usedPercent = store?.snapshots[plugin.manifest.id]?.primary?.usedPercent else {
-                return nil
-            }
-            return max(0, min(100, 100 - usedPercent))
-        })
+                remainingPercentProvider: { [weak store = self.store] in
+                    guard let usedPercent = store?.snapshots[plugin.manifest.id]?.primary?.usedPercent else {
+                        return nil
+                    }
+                    return max(0, min(100, 100 - usedPercent))
+                })
         }
     }
 
