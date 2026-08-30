@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "release/v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -20,17 +22,54 @@ concurrency:
 
 jobs:
   build-and-release:
+    # A release/v* branch may create the matching tag with GITHUB_TOKEN. Ignore the
+    # resulting bot-authored tag event so the same release is not built twice.
+    if: github.actor != 'github-actions[bot]'
     runs-on: macos-26
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       CODEXBAR_SIGNING: adhoc
       ARCHES: "arm64 x86_64"
 
     steps:
-      - name: Checkout release tag
+      - name: Resolve release tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch)
+              RELEASE_TAG="$INPUT_TAG"
+              ;;
+            push)
+              if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+                RELEASE_TAG="$GITHUB_REF_NAME"
+              elif [[ "$GITHUB_REF" == refs/heads/release/* ]]; then
+                RELEASE_TAG="${GITHUB_REF_NAME#release/}"
+              else
+                echo "Unsupported push ref: $GITHUB_REF" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unsupported event: $GITHUB_EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9] ]]; then
+            echo "Release tag must begin with v followed by a digit: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "Resolved release tag: $RELEASE_TAG"
+
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.sha }}
           fetch-depth: 0
 
       - name: Select Xcode toolchain
@@ -53,18 +92,27 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Validate release tag
+      - name: Ensure release tag
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9] ]]; then
-            echo "Release tag must begin with v followed by a digit: $RELEASE_TAG" >&2
+          git fetch --tags --force
+
+          if git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Using existing tag: $RELEASE_TAG"
+          elif [[ "$GITHUB_REF" == refs/heads/release/* ]]; then
+            echo "Creating $RELEASE_TAG at $(git rev-parse HEAD)"
+            git tag "$RELEASE_TAG"
+            git push origin "refs/tags/$RELEASE_TAG"
+          else
+            echo "Tag does not exist: $RELEASE_TAG" >&2
             exit 1
           fi
 
-          git fetch --tags --force
-          if ! git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Tag does not exist: $RELEASE_TAG" >&2
+          TAG_COMMIT="$(git rev-list -n 1 "$RELEASE_TAG")"
+          HEAD_COMMIT="$(git rev-parse HEAD)"
+          if [[ "$TAG_COMMIT" != "$HEAD_COMMIT" ]]; then
+            echo "Tag $RELEASE_TAG points to $TAG_COMMIT, but checkout is $HEAD_COMMIT" >&2
             exit 1
           fi
 
