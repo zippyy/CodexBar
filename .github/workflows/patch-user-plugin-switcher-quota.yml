@@ -131,22 +131,14 @@ jobs:
           user_plugins = "Sources/CodexBar/StatusItemController+UserPlugins.swift"
           replace_once(
               user_plugins,
-              """            ProviderSwitcherAdditionalSegment(
-                      instanceID: plugin.manifest.id,
-                      image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
-                      title: plugin.manifest.name)
-          """,
-              """            ProviderSwitcherAdditionalSegment(
-                      instanceID: plugin.manifest.id,
-                      image: self.userPluginSwitcherIcon(monogram: plugin.manifest.icon.monogram),
-                      title: plugin.manifest.name,
-                      remainingPercentProvider: { [weak store = self.store] in
-                          guard let usedPercent = store?.snapshots[plugin.manifest.id]?.primary?.usedPercent else {
-                              return nil
-                          }
-                          return max(0, min(100, 100 - usedPercent))
-                      })
-          """)
+              "                title: plugin.manifest.name)",
+              """                title: plugin.manifest.name,
+                  remainingPercentProvider: { [weak store = self.store] in
+                      guard let usedPercent = store?.snapshots[plugin.manifest.id]?.primary?.usedPercent else {
+                          return nil
+                      }
+                      return max(0, min(100, 100 - usedPercent))
+                  })""")
           PY
 
       - name: Run focused tests
